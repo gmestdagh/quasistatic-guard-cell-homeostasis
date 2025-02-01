@@ -176,4 +176,3 @@ axes[3,0].set_title('(g) ' + axes[3,0].get_title())
 axes[3,1].set_title('(h) ' + axes[3,1].get_title())
 p._process_figure(fig, 'quantities_and_computed')
 
-print(output_dir)
