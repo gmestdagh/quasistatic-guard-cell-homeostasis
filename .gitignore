@@ -1,0 +1,12 @@
+**/__pycache__
+.idea
+.vscode
+**.npy
+**.npz
+**/.ipynb_checkpoints
+**/ipykernel_launcher
+results
+
+.venv
+**/.ruff_cache
+**/.DS_Store
