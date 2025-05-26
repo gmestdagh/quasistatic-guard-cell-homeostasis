@@ -19,6 +19,8 @@ from pathlib import Path
 from utils.static_model import DirectStaticModel
 from utils.physics import DimensionedEnergies
 
+from mpmath import mp
+
 # Prepare matplotlib parameters
 plt.rcParams['figure.figsize'] = [4.8, 4.8]
 plt.rcParams['lines.linewidth'] = 3
@@ -135,6 +137,48 @@ def process_model(m: DirectStaticModel, state: jax.Array,
         hessian_fname = save_name + '_hessians.pdf'
         fgh.savefig(hessian_fname, transparent=True, dpi=300)
 
+    return tota_hess
+
+
+def plot_eigenvalues(m: DirectStaticModel, all_states: jax.Array,
+                     progress: jax.Array, save_name = None):
+    """Plot the evolution of Hessian eigenvalues along the simulation."""
+    # Create dimensioned physical functions
+    dimensioned_physics = MyDimensionedEnergies(
+        m.membranes,
+        m.reactants
+    )
+
+    # Create array to store eigenvalues
+    eigenvalues = jnp.zeros_like(all_states)
+
+    # Iterate over all states
+    for (idx, state) in enumerate(all_states):
+
+        # Evaluate Hessian matrices
+        chem_hess = dimensioned_physics.hess_chemical_energy(state)
+        elec_hess = dimensioned_physics.hess_electrostatic_energy(state)
+        elas_hess = dimensioned_physics.hess_elastic_energy(state)
+        tota_hess = chem_hess + elec_hess + elas_hess
+
+        # Compute eigenvalues
+        H = mp.matrix(tota_hess)
+        val, _ = mp.eigsy(H)
+        eigenvalues = eigenvalues.at[idx,:].set(jnp.float64(val))
+
+    # Prepare figure showing evolution of eigenvalues
+    fig, ax = plt.subplots(layout='tight', figsize=(8, 8))
+    ax.plot(progress, eigenvalues, linewidth = 2)
+    ax.grid(True, axis='both', which='both')
+    ax.set_yscale('log')
+    ax.set_xlabel('Progress (mol)')
+    ax.set_ylabel('Eigenvalues (J / mol^2)')
+
+    if save_name is not None:
+        fig.savefig(save_name, transparent=True, dpi=300)
+
+    return eigenvalues
+
 
 ###############################################################################
 # Functions to compute Hessians in dimensioned domain
@@ -195,10 +239,10 @@ all_states = jnp.vstack(
 ).T
 
 ###############################################################################
-# Plot initial and final Hessian matrices
+# Plot initial and final Hessian matrices and print their eigenvalues
 ###############################################################################
 # Plot initial Hessian matrices
-process_model(
+tota_hess_init = process_model(
     m=model,
     state=all_states[0,:],
     reactant_names=reactant_names,
@@ -206,9 +250,47 @@ process_model(
 )
 
 # Plot final Hessian matrices
-process_model(
+tota_hess_final = process_model(
     m=model,
     state=all_states[-1,:],
     reactant_names=reactant_names,
     save_name=os.path.join(output_dir, 'final')
 )
+
+
+# Compute eigenvalues of the initial Hessian
+# Because Hessian matrices are badly conditioned, we use MPFR utilities to
+# compute in arbitrary precision
+mp.dps = 50
+
+print("\n\n-- Eigenvalues of initial Hessian matrix\n")
+H = mp.matrix(tota_hess_init)
+val, vec = mp.eigsy(H)
+
+for i in range(val.rows):
+    print(f'= {i} =============')
+    print(f'{jnp.float64(val[i]):.1e}')
+    for elt in vec[:,i]:
+        print(f'  {jnp.float64(elt):.03f}', end='')
+    print()
+
+print("\n\n-- Eigenvalues of final Hessian matrix\n")
+H = mp.matrix(tota_hess_final)
+val, vec = mp.eigsy(H)
+
+for i in range(val.rows):
+    print(f'= {i} =============')
+    print(f'{jnp.float64(val[i]):.1e}')
+    for elt in vec[:,i]:
+        print(f'  {jnp.float64(elt):.03f}', end='')
+    print()
+
+
+print('\n\nComputing and plotting eigenvalues along simulation...')
+ev = plot_eigenvalues(
+    model,
+    all_states,
+    progress=dimensioned_values['progress'],
+    save_name=os.path.join(output_dir, 'eigenvalues.pdf')
+)
+
