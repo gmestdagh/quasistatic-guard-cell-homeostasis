@@ -189,13 +189,12 @@ def plot_eigenvalues(m: DirectStaticModel, all_states: jax.Array,
         ax.set_yticks([], [])
 
         eigval = eigenvalues[-1,idx]
-        ax.set_title(f'v{idx:d} = {eigval:8.1e}', fontsize=10)
+        ax.set_title(f'λ{idx:d} = {eigval:8.1e}', fontsize=10)
 
         # Add values in boxes
         for (j, el) in enumerate(vec):
             # Plot coefficient in log scale as text
-            # color = 'white' if c < v_mid else 'black'
-            color = 'black'
+            color = 'black' if abs(el) < 0.6 else 'white'
             ax.text(0, j, f'{el:.1f}', va='center', ha='center',
                     color=color, fontsize=10)
 
@@ -204,6 +203,7 @@ def plot_eigenvalues(m: DirectStaticModel, all_states: jax.Array,
     axes_top[0].set_axis_on()
     axes_top[0].set_yticks(range(n_reactants), reactant_names, fontsize=10)
     axes_top[0].set_xticks([], [])
+    subfigs[0].suptitle("(a) Eigenvectors of total Hessian at final state")
 
 
     # Prepare figure showing evolution of eigenvalues
@@ -214,7 +214,7 @@ def plot_eigenvalues(m: DirectStaticModel, all_states: jax.Array,
     ax.set_yscale('log')
     ax.set_xlabel('Progress (mol)')
     ax.set_ylabel('Eigenvalues (J / mol^2)')
-    ax.set_title('(a) Eigenvalues of total Hessian')
+    ax.set_title('(b) Eigenvalues of total Hessian')
     #ax.legend(labels=[f'v{i}' for i in range(8)])
 
     # Prepare figure showing evolution of angle between eigenvectors
@@ -226,7 +226,7 @@ def plot_eigenvalues(m: DirectStaticModel, all_states: jax.Array,
     ax.legend(labels=[f'v{i}' for i in range(8)])
     ax.set_ylabel('Angle between eigenvectors (degrees)')
     ax.set_ylim(0., 10.)
-    ax.set_title('(b) Drift of principal directions')
+    ax.set_title('(c) Drift of Hessian eigenvectors')
 
     if output_folder is not None:
         fig.savefig(
