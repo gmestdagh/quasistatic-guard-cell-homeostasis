@@ -196,7 +196,7 @@ def plot_eigenvalues(m: DirectStaticModel, all_states: jax.Array,
             # Plot coefficient in log scale as text
             color = 'black' if abs(el) < 0.6 else 'white'
             ax.text(0, j, f'{el:.1f}', va='center', ha='center',
-                    color=color, fontsize=10)
+                    color=color, fontsize=12)
 
     # Show reactant names on leftmost figure
     n_reactants = len(reactant_names)
@@ -205,11 +205,24 @@ def plot_eigenvalues(m: DirectStaticModel, all_states: jax.Array,
     axes_top[0].set_xticks([], [])
     subfigs[0].suptitle("(a) Eigenvectors of total Hessian at final state")
 
+    # Prepare one linestyle per eigenvector/value
+    linestyles = (
+        'solid',
+        'dashdot',
+        'dotted',
+        'dashed',
+        (0., (6., 3.)),
+        (0., (6., 2., 2., 2.)),
+        (0., (5., 1., 1., 1., 1., 1.)),
+        (0., (6., 1., 3., 1., 1., 1.)),
+    )
+
 
     # Prepare figure showing evolution of eigenvalues
     # fig, ax = plt.subplots(layout='tight', figsize=(5, 5))
     ax = axes_bottom[0]
-    ax.plot(progress, eigenvalues, linewidth=2)
+    for (val, ls) in zip(eigenvalues.T, linestyles):
+        ax.plot(progress, val, linewidth=2, linestyle=ls)
     ax.grid(True, axis='both', which='both')
     ax.set_yscale('log')
     ax.set_xlabel('Progress (mol)')
@@ -220,7 +233,8 @@ def plot_eigenvalues(m: DirectStaticModel, all_states: jax.Array,
     # Prepare figure showing evolution of angle between eigenvectors
     # fig, ax = plt.subplots(layout='tight', figsize=(5, 5))
     ax = axes_bottom[1]
-    ax.plot(progress, angles, linewidth=2)
+    for (ang, ls) in zip(angles.T, linestyles):
+        ax.plot(progress, ang, linewidth=2, linestyle=ls)
     ax.grid(True, axis='both', which='both')
     ax.set_xlabel('Progress (mol)')
     ax.legend(labels=[f'v{i}' for i in range(8)])
