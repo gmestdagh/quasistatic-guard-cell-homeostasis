@@ -175,7 +175,7 @@ def plot_eigenvalues(m: DirectStaticModel, all_states: jax.Array,
 
     # Prepare big figure showing eigenvalues of final Hessian
     # along with evolution of eigenvalues/vectors along simulation
-    fig = plt.figure(layout='constrained', figsize=(10, 10))
+    fig = plt.figure(layout='constrained', figsize=(10, 8))
     subfigs = fig.subfigures(2, 1)
     axes_top = subfigs[0].subplots(1, 8)
     axes_bottom = subfigs[1].subplots(1, 2)
@@ -189,7 +189,8 @@ def plot_eigenvalues(m: DirectStaticModel, all_states: jax.Array,
         ax.set_yticks([], [])
 
         eigval = eigenvalues[-1,idx]
-        ax.set_title(f'λ{idx:d} = {eigval:8.1e}', fontsize=10)
+        ax.set_title(f'$\lambda_{idx:d} = 10^{{{jnp.log10(eigval):.1f}}}$',
+                     fontsize=12)
 
         # Add values in boxes
         for (j, el) in enumerate(vec):
