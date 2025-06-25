@@ -36,21 +36,17 @@ parent_dir = current_dir.parent.absolute()
 output_dir = os.path.join(parent_dir, 'results', Path(sys.argv[0]).stem)
 os.makedirs(output_dir, exist_ok=True)
 
+# Parameters for mpmath package
+mp.dps = 50
+
 ###############################################################################
 # Functions to plot Hessian in dimensioned domain
 ###############################################################################
-hessian_titles = [
-    '(a) Chemical Hessian matrix',
-    '(b) Electrostatic Hessian matrix',
-    '(c) Elastic Hessian matrix',
-    '(d) Total Hessian matrix'
-]
 
 
-def plot_hessians(hessian_matrices, reactant_names):
+def plot_hessians(axes, hessian_matrices, reactant_names):
     """Display graphically Hessian matrices"""
     n_reactants = len(reactant_names)
-    fg, axs = plt.subplots(2, 2, layout='tight', figsize=(8, 8))
 
     # Set common max and min values between all matrices
     v_min, v_max = jnp.inf, -jnp.inf
@@ -62,7 +58,7 @@ def plot_hessians(hessian_matrices, reactant_names):
     v_mid = 0.25 * (3 * v_max + v_min)
 
     # Plot each matrix in a different axis
-    for (ax, hes, ti) in zip(axs.flat, hessian_matrices, hessian_titles):
+    for (ax, hes, ti) in zip(axes, hessian_matrices, hessian_titles):
         log_hes = jnp.log10(jnp.abs(hes))
         ax.matshow(log_hes, vmin=v_min, vmax=v_max)  # Plot colormap
         for i in range(n_reactants):
@@ -76,12 +72,12 @@ def plot_hessians(hessian_matrices, reactant_names):
         ax.set_title(ti)
         ax.set_xticks(range(n_reactants), reactant_names, fontsize=10)
         ax.set_yticks(range(n_reactants), reactant_names, fontsize=10)
+    
+    return None
 
-    return fg, axs
 
-
-def process_model(m: DirectStaticModel, state: jax.Array,
-                  reactant_names, save_name: str = None):
+def plot_hessians_with_boxes(m: DirectStaticModel, state: jax.Array,
+                  reactant_names, axes):
     """Plot energy hessian matrices at a given state.
 
     This function generates a figure containing the four Hessian
@@ -90,10 +86,7 @@ def process_model(m: DirectStaticModel, state: jax.Array,
     """
 
     # Create dimensioned physical functions
-    dimensioned_physics = MyDimensionedEnergies(
-        model.membranes,
-        model.reactants
-    )
+    dimensioned_physics = MyDimensionedEnergies(m.membranes, m.reactants)
 
     # Evaluate Hessian matrices
     chem_hess = dimensioned_physics.hess_chemical_energy(state)
@@ -102,7 +95,8 @@ def process_model(m: DirectStaticModel, state: jax.Array,
     tota_hess = chem_hess + elec_hess + elas_hess
 
     # Create the figure with hessian
-    fgh, axh = plot_hessians(
+    plot_hessians(
+        axes=axes,
         hessian_matrices=(chem_hess, elec_hess, elas_hess, tota_hess),
         reactant_names=reactant_names
     )
@@ -120,34 +114,56 @@ def process_model(m: DirectStaticModel, state: jax.Array,
             linestyle='dashed'
         ))
 
-    add_rectangle(axh[0,0], 1, 1)
-    add_rectangle(axh[0,0], 2, 2)
-    add_rectangle(axh[0,0], 3, 3)
-    add_rectangle(axh[0,0], 5, 5)
-    add_rectangle(axh[0,0], 6, 6)
-    add_rectangle(axh[0,0], 7, 7)
+    add_rectangle(axes[0], 1, 1)
+    add_rectangle(axes[0], 2, 2)
+    add_rectangle(axes[0], 3, 3)
+    add_rectangle(axes[0], 5, 5)
+    add_rectangle(axes[0], 6, 6)
+    add_rectangle(axes[0], 7, 7)
 
-    add_rectangle(axh[0,1], 1, 1, 3)
-    add_rectangle(axh[0,1], 5, 5, 3)
-
-    # Save to figure if necessary
-    if save_name is not None:
-        hessian_fname = save_name + '_hessians.pdf'
-        fgh.savefig(hessian_fname, transparent=True, dpi=300)
+    add_rectangle(axes[1], 1, 1, 3)
+    add_rectangle(axes[1], 5, 5, 3)
 
     return tota_hess
 
 
+def plot_hessian_eigenvectors(eigenvalues: jax.Array, eigenvectors: jax.Array,
+                              reactant_names: list[str], fig):
+    """Plot the eigenvectors of a Hessian matrix"""
+    # Prepare one axis per eigenvector
+    axes = fig.subplots(1, eigenvectors.shape[0])
+
+    for (idx, (ax, vec)) in enumerate(zip(axes, eigenvectors)):
+
+        # Plot vector using colors
+        ax.matshow(vec.reshape(-1, 1), vmin=-1, vmax = 1, cmap='bwr')
+        ax.set_xticks([], [])
+        ax.set_yticks([], [])
+
+        eigval = eigenvalues[idx]
+        ax.set_title(f'$\lambda_{idx+1:d} = 10^{{{jnp.log10(eigval):.1f}}}$',
+                     fontsize=14)
+
+        # Add values in boxes
+        for (j, el) in enumerate(vec):
+            # Plot coefficient in log scale as text
+            color = 'black' if abs(el) < 0.6 else 'white'
+            ax.text(0, j, f'{el:.1f}', va='center', ha='center',
+                    color=color, fontsize=12)
+
+    # Show reactant names on leftmost figure
+    n_reactants = len(reactant_names)
+    axes[0].set_axis_on()
+    axes[0].set_yticks(range(n_reactants), reactant_names, fontsize=10)
+    axes[0].set_xticks([], [])
+    fig.suptitle("Eigenvectors of total Hessian at final state")
+
+
 def plot_eigenvalues(m: DirectStaticModel, all_states: jax.Array,
-                     progress: jax.Array, vec_final: jax.Array,
-                     reactant_names: list[str],
-                     output_folder: str = None):
+                     progress: jax.Array, fig):
     """Plot the evolution of Hessian eigenvalues along the simulation."""
     # Create dimensioned physical functions
-    dimensioned_physics = MyDimensionedEnergies(
-        m.membranes,
-        m.reactants
-    )
+    dimensioned_physics = MyDimensionedEnergies(m.membranes, m.reactants)
 
     # Create array to store eigenvalues
     eigenvalues = jnp.zeros_like(all_states)
@@ -173,38 +189,8 @@ def plot_eigenvalues(m: DirectStaticModel, all_states: jax.Array,
         angle = jnp.arccos(cos_angle) * 180. / jnp.pi
         angles = angles.at[idx,:].set(angle)
 
-    # Prepare big figure showing eigenvalues of final Hessian
-    # along with evolution of eigenvalues/vectors along simulation
-    fig = plt.figure(layout='constrained', figsize=(10, 8))
-    subfigs = fig.subfigures(2, 1)
-    axes_top = subfigs[0].subplots(1, 8)
-    axes_bottom = subfigs[1].subplots(1, 2)
-
-    # Prepare figure showing eigenvectors of final matrix
-    for (idx, (ax, vec)) in enumerate(zip(axes_top, vec_final)):
-
-        # Plot vector using colors
-        ax.matshow(vec.reshape(-1, 1), vmin=-1, vmax = 1, cmap='bwr')
-        ax.set_xticks([], [])
-        ax.set_yticks([], [])
-
-        eigval = eigenvalues[-1,idx]
-        ax.set_title(f'$\lambda_{idx:d} = 10^{{{jnp.log10(eigval):.1f}}}$',
-                     fontsize=12)
-
-        # Add values in boxes
-        for (j, el) in enumerate(vec):
-            # Plot coefficient in log scale as text
-            color = 'black' if abs(el) < 0.6 else 'white'
-            ax.text(0, j, f'{el:.1f}', va='center', ha='center',
-                    color=color, fontsize=12)
-
-    # Show reactant names on leftmost figure
-    n_reactants = len(reactant_names)
-    axes_top[0].set_axis_on()
-    axes_top[0].set_yticks(range(n_reactants), reactant_names, fontsize=10)
-    axes_top[0].set_xticks([], [])
-    subfigs[0].suptitle("(a) Eigenvectors of total Hessian at final state")
+    # Prepare figure showing evolution of eigenvalues/vectors along simulation    
+    axes = fig.subplots(1, 2)
 
     # Prepare one linestyle per eigenvector/value
     linestyles = (
@@ -218,37 +204,29 @@ def plot_eigenvalues(m: DirectStaticModel, all_states: jax.Array,
         (0., (6., 1., 3., 1., 1., 1.)),
     )
 
-
     # Prepare figure showing evolution of eigenvalues
     # fig, ax = plt.subplots(layout='tight', figsize=(5, 5))
-    ax = axes_bottom[0]
+    ax = axes[0]
     for (val, ls) in zip(eigenvalues.T, linestyles):
         ax.plot(progress, val, linewidth=2, linestyle=ls)
     ax.grid(True, axis='both', which='both')
     ax.set_yscale('log')
     ax.set_xlabel('Progress (mol)')
     ax.set_ylabel('Eigenvalues (J / mol^2)')
-    ax.set_title('(b) Eigenvalues of total Hessian')
+    ax.set_title('Eigenvalues of total Hessian')
     #ax.legend(labels=[f'v{i}' for i in range(8)])
 
     # Prepare figure showing evolution of angle between eigenvectors
     # fig, ax = plt.subplots(layout='tight', figsize=(5, 5))
-    ax = axes_bottom[1]
+    ax = axes[1]
     for (ang, ls) in zip(angles.T, linestyles):
         ax.plot(progress, ang, linewidth=2, linestyle=ls)
     ax.grid(True, axis='both', which='both')
     ax.set_xlabel('Progress (mol)')
-    ax.legend(labels=[f'v{i}' for i in range(8)])
+    ax.legend(labels=[f'$v_{i + 1}$' for i in range(eigenvalues.shape[1])])
     ax.set_ylabel('Angle between eigenvectors (degrees)')
     ax.set_ylim(0., 10.)
-    ax.set_title('(c) Drift of Hessian eigenvectors')
-
-    if output_folder is not None:
-        fig.savefig(
-            os.path.join(output_folder, 'eigenvalues.pdf'),
-            transparent=True,
-            dpi=300
-        )
+    ax.set_title('Drift of Hessian eigenvectors')
 
     return eigenvalues, angles
 
@@ -285,7 +263,7 @@ model = common_models.create_two_membrane_model()
 reactant_names = [r'H${}^+$', r'Cl${}^-$', r'K${}^+$', r'H${}_2$O',
                   r'H${}^+$', r'Cl${}^-$', r'K${}^+$', r'H${}_2$O']
 
-# Load first and last points from simulation results
+# Load simulation results
 file_values = os.path.join(parent_dir, 'results', '1_simple_simulation',
                            'dimensioned_values.npz')
 try:
@@ -298,6 +276,7 @@ except FileNotFoundError:
            "============================================================")
     raise
 
+# Gather all simulation steps in a big array
 all_states = jnp.vstack(
     (
         dimensioned_values['n_hydrogen'][:,0],
@@ -311,65 +290,98 @@ all_states = jnp.vstack(
     )
 ).T
 
+# Create dimensioned physical functions (utility to evaluate Hessian matrices)
+dimensioned_physics = MyDimensionedEnergies(
+    model.membranes,
+    model.reactants
+)
+
+# Set title of Hessian plots
+hessian_titles = [
+    'Chemical Hessian matrix',
+    'Electrostatic Hessian matrix',
+    'Elastic Hessian matrix',
+    'Total Hessian matrix'
+]
 ###############################################################################
-# Plot initial and final Hessian matrices and print their eigenvalues
+# Plot initial Hessian matrix and print its eigenvalues
 ###############################################################################
+
 # Plot initial Hessian matrices
-tota_hess_init = process_model(
+fig_init, axes_init = plt.subplots(2, 2, layout='tight', figsize=(8, 8))
+
+tota_hess_init = plot_hessians_with_boxes(
     m=model,
     state=all_states[0,:],
     reactant_names=reactant_names,
-    save_name=os.path.join(output_dir, 'initial')
+    axes=axes_init.reshape(-1)
 )
 
-# Plot final Hessian matrices
-tota_hess_final = process_model(
+for (ax, l) in zip(axes_init.flat, ('a', 'b', 'c', 'd')):
+    ax.set_title(f"({l}) {ax.get_title()}")
+
+# Save figure to PDF
+fig_init.savefig(
+    os.path.join(output_dir, 'initial_hessians.pdf'),
+    transparent=True,
+    dpi=300
+)
+
+###############################################################################
+# Plot final Hessian matrices and evolution of eigenvalues
+###############################################################################
+# Preparing a big figure containing the total energy Hessian, its eigenvectors,
+# the other Hessians and finally the evolution of eigenvalues and eigenvectors.
+fig_final = plt.Figure(layout="constrained", figsize=(10, 12))
+subfigs = fig_final.subfigures(3, 1, height_ratios=(1, 1, 1.25))
+
+# First level : total Hessian matrix and its eigenvectors
+sf_total_H, sf_eigenvectors = subfigs[0] \
+    .subfigures(1, 2, width_ratios=(1, 2))
+
+# Second level : Hessian matrix of each energy term
+sf_chem, sf_elec, sf_meca = subfigs[1].subfigures(1, 3)
+axes_hessians = (
+    sf_chem.subplots(),
+    sf_elec.subplots(),
+    sf_meca.subplots(),
+    sf_total_H.subplots()
+)
+
+# fig_final, axes_final = plt.subplots(2, 2, layout='tight', figsize=(8, 8))
+
+tota_hess_final = plot_hessians_with_boxes(
     m=model,
     state=all_states[-1,:],
     reactant_names=reactant_names,
-    save_name=os.path.join(output_dir, 'final')
+    axes=axes_hessians
 )
 
 
-# Compute eigenvalues of the initial Hessian
-# Because Hessian matrices are badly conditioned, we use MPFR utilities to
-# compute in arbitrary precision
-mp.dps = 50
 
-print("\n\n-- Eigenvalues of initial Hessian matrix\n")
-H = mp.matrix(tota_hess_init)
-val_mp, vec_mp = mp.eigsy(H)
-val_init = jnp.array(val_mp, dtype=jnp.float64)
-vec_init = jnp.array(vec_mp, dtype=jnp.float64).reshape(8, 8).T
-
-for (idx, (val, vec)) in enumerate(zip(val_init, vec_init)):
-    print(f'-------------\n  i = {idx:2d}  val = {val:9.2e}')
-    print('vec = [', end='')
-    for elt in vec:
-        print(f'  {elt:6.3f}', end='')
-    print(']\n')
-
-print("\n\n-- Eigenvalues of final Hessian matrix\n")
+# print("\n\n-- Eigenvalues of final Hessian matrix\n")
 H = mp.matrix(tota_hess_final)
 val_mp, vec_mp = mp.eigsy(H)
 val_final = jnp.array(val_mp, dtype=jnp.float64)
 vec_final = jnp.array(vec_mp, dtype=jnp.float64).reshape(8, 8).T
 
-for (idx, (val, vec)) in enumerate(zip(val_final, vec_final)):
-    print(f'-------------\n  i = {idx:2d}  val = {val:9.2e}')
-    print('vec = [', end='')
-    for elt in vec:
-        print(f'  {elt:6.3f}', end='')
-    print(']')
+plot_hessian_eigenvectors(
+    eigenvalues=val_final,
+    eigenvectors=vec_final,
+    reactant_names=reactant_names,
+    fig=subfigs[2]
+)
 
-
-print('\n\nComputing and plotting eigenvalues along simulation...')
 ev, angles = plot_eigenvalues(
     model,
     all_states,
     progress=dimensioned_values['progress'],
-    vec_final=vec_final,
-    reactant_names=reactant_names,
-    output_folder=output_dir
+    fig=sf_eigenvectors
 )
 
+# Save figure to PDF
+fig_final.savefig(
+    os.path.join(output_dir, 'final_hessians.pdf'),
+    transparent=True,
+    dpi=300
+)
