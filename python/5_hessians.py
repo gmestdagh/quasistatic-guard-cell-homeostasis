@@ -142,7 +142,7 @@ def plot_hessian_eigenvectors(eigenvalues: jax.Array, eigenvectors: jax.Array,
 
         eigval = eigenvalues[idx]
         ax.set_title(f'$\lambda_{idx+1:d} = 10^{{{jnp.log10(eigval):.1f}}}$',
-                     fontsize=14)
+                     fontsize=12)
 
         # Add values in boxes
         for (j, el) in enumerate(vec):
@@ -223,7 +223,7 @@ def plot_eigenvalues(m: DirectStaticModel, all_states: jax.Array,
         ax.plot(progress, ang, linewidth=2, linestyle=ls)
     ax.grid(True, axis='both', which='both')
     ax.set_xlabel('Progress (mol)')
-    ax.legend(labels=[f'$v_{i + 1}$' for i in range(eigenvalues.shape[1])])
+    ax.legend(labels=[f'$u_{i + 1}$' for i in range(eigenvalues.shape[1])])
     ax.set_ylabel('Angle between eigenvectors (degrees)')
     ax.set_ylim(0., 10.)
     ax.set_title('Drift of Hessian eigenvectors')
@@ -330,36 +330,32 @@ fig_init.savefig(
 ###############################################################################
 # Plot final Hessian matrices and evolution of eigenvalues
 ###############################################################################
-# Preparing a big figure containing the total energy Hessian, its eigenvectors,
-# the other Hessians and finally the evolution of eigenvalues and eigenvectors.
-fig_final = plt.Figure(layout="constrained", figsize=(10, 12))
-subfigs = fig_final.subfigures(3, 1, height_ratios=(1, 1, 1.25))
-
-# First level : total Hessian matrix and its eigenvectors
-sf_total_H, sf_eigenvectors = subfigs[0] \
-    .subfigures(1, 2, width_ratios=(1, 2))
-
-# Second level : Hessian matrix of each energy term
-sf_chem, sf_elec, sf_meca = subfigs[1].subfigures(1, 3)
-axes_hessians = (
-    sf_chem.subplots(),
-    sf_elec.subplots(),
-    sf_meca.subplots(),
-    sf_total_H.subplots()
-)
-
-# fig_final, axes_final = plt.subplots(2, 2, layout='tight', figsize=(8, 8))
+# Plot final Hessian matrices
+fig_final, axes_final = plt.subplots(2, 2, layout='tight', figsize=(8, 8))
 
 tota_hess_final = plot_hessians_with_boxes(
     m=model,
     state=all_states[-1,:],
     reactant_names=reactant_names,
-    axes=axes_hessians
+    axes=axes_final.reshape(-1)
 )
 
+for (ax, l) in zip(axes_final.flat, ('a', 'b', 'c', 'd')):
+    ax.set_title(f"({l}) {ax.get_title()}")
 
+# Save figure to PDF
+fig_final.savefig(
+    os.path.join(output_dir, 'final_hessians.pdf'),
+    transparent=True,
+    dpi=300
+)
 
-# print("\n\n-- Eigenvalues of final Hessian matrix\n")
+# Preparing a big figure containing the total energy Hessian eigenvectors,
+# and the evolution of eigenvalues and eigenvectors.
+fig_eig = plt.Figure(layout="constrained", figsize=(8, 8))
+subfigs = fig_eig.subfigures(2, 1)
+
+# Compute eigenvalues of final Hessian
 H = mp.matrix(tota_hess_final)
 val_mp, vec_mp = mp.eigsy(H)
 val_final = jnp.array(val_mp, dtype=jnp.float64)
@@ -369,19 +365,22 @@ plot_hessian_eigenvectors(
     eigenvalues=val_final,
     eigenvectors=vec_final,
     reactant_names=reactant_names,
-    fig=subfigs[2]
+    fig=subfigs[0]
 )
+subfigs[0].suptitle("(a) " + subfigs[0].get_suptitle())
 
 ev, angles = plot_eigenvalues(
     model,
     all_states,
     progress=dimensioned_values['progress'],
-    fig=sf_eigenvectors
+    fig=subfigs[1]
 )
+subfigs[1].axes[0].set_title("(b) " + subfigs[1].axes[0].get_title())
+subfigs[1].axes[1].set_title("(c) " + subfigs[1].axes[1].get_title())
 
 # Save figure to PDF
-fig_final.savefig(
-    os.path.join(output_dir, 'final_hessians.pdf'),
+fig_eig.savefig(
+    os.path.join(output_dir, 'eigenvalues.pdf'),
     transparent=True,
     dpi=300
 )
